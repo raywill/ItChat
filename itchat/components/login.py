@@ -3,6 +3,10 @@ import threading
 import json, xml.dom.minidom
 import copy, pickle, random
 import traceback, logging
+try:
+    from httplib import BadStatusLine
+except ImportError:
+    from http.client import BadStatusLine
 
 import requests
 from pyqrcode import QRCode
@@ -123,8 +127,8 @@ def check_login(self, uuid=None):
     uuid = uuid or self.uuid
     url = '%s/cgi-bin/mmwebwx-bin/login' % config.BASE_URL
     localTime = int(time.time())
-    params = 'loginicon=true&uuid=%s&tip=0&r=%s&_=%s' % (
-        uuid, localTime / 1579, localTime)
+    params = 'loginicon=true&uuid=%s&tip=1&r=%s&_=%s' % (
+        uuid, int(-localTime / 1579), localTime)
     headers = { 'User-Agent' : config.USER_AGENT }
     r = self.s.get(url, params=params, headers=headers)
     regx = r'window.code=(\d+)'
@@ -181,12 +185,15 @@ def process_login_info(core, loginContent):
     return True
 
 def web_init(self):
-    url = '%s/webwxinit?r=%s' % (self.loginInfo['url'], int(time.time()))
+    url = '%s/webwxinit' % self.loginInfo['url']
+    params = {
+        'r': int(-time.time() / 1579),
+        'pass_ticket': self.loginInfo['pass_ticket'], }
     data = { 'BaseRequest': self.loginInfo['BaseRequest'], }
     headers = {
         'ContentType': 'application/json; charset=UTF-8',
         'User-Agent' : config.USER_AGENT, }
-    r = self.s.post(url, data=json.dumps(data), headers=headers)
+    r = self.s.post(url, params=params, data=json.dumps(data), headers=headers)
     dic = json.loads(r.content.decode('utf-8', 'replace'))
     # deal with login info
     utils.emoji_formatter(dic['User'], 'NickName')
@@ -292,7 +299,20 @@ def sync_check(self):
         'synckey'  : self.loginInfo['synckey'],
         '_'        : int(time.time() * 1000),}
     headers = { 'User-Agent' : config.USER_AGENT }
-    r = self.s.get(url, params=params, headers=headers, timeout=config.TIMEOUT)
+    try:
+        r = self.s.get(url, params=params, headers=headers, timeout=config.TIMEOUT)
+    except requests.exceptions.ConnectionError as e:
+        try:
+            if not isinstance(e.args[0].args[1], BadStatusLine):
+                raise
+            # will return a package with status '0 -'
+            # and value like:
+            # 6f:00:8a:9c:09:74:e4:d8:e0:14:bf:96:3a:56:a0:64:1b:a4:25:5d:12:f4:31:a5:30:f1:c6:48:5f:c3:75:6a:99:93
+            # seems like status of typing, but before I make further achievement code will remain like this
+            return '2'
+        except:
+            raise
+    r.raise_for_status()
     regx = r'window.synccheck={retcode:"(\d+)",selector:"(\d+)"}'
     pm = re.search(regx, r.text)
     if pm is None or pm.group(1) != '0':
