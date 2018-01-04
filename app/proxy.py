@@ -5,7 +5,7 @@
 import sys
 #sys.path.append("..")
 import itchat
-#import grouprobot
+import grouprobot
 import time
 import urllib2
 import urllib
@@ -92,6 +92,7 @@ def text_reply(msg):
         return
 
     xMsg = {}
+    xMsg['Timestamp']     = time.time()
     xMsg['Type']          = msg['Type']
     xMsg['MsgType']       = msg['MsgType']
     xMsg['GroupUserName'] = msg['User'].UserName
@@ -101,17 +102,14 @@ def text_reply(msg):
     xMsg['FromNickName']  = msg['ActualNickName']
     xMsg['GroupMembers']  = []
 
-    needSendBatchMsgToRobot = False
-
     print u"群成员列表提取成功："
     for u in msg['User'].MemberList :
         xMsg['GroupMembers'].append({"UserName" : u.UserName, "NickName" : u.NickName})
         print u" %s %s" % (u.UserName, u.NickName)
 
-    append_to_msg_buf(xMsg)
-
     print u"%s 在群[%s]里说: %s" % (xMsg['FromNickName'], xMsg['GroupNickName'], xMsg['Text'])
 
+    grouprobot.receive(xMsg)
 
     enableQuickRemoveBlacklist = False # 暂时关闭本功能，避免封号。后面再细化对某些特殊用户施加本法术
     if gBlackListCache and enableQuickRemoveBlacklist :
@@ -123,60 +121,17 @@ def text_reply(msg):
 
     return
 
-    #if chatroom and (msg.isAt or msg.text.find(u'测试机器人') >= 0):
-        #chatrooms = itchat.search_chatrooms(name=u'淘宝黑车')
-        #chatroom = itchat.update_chatroom(chatrooms[0]['UserName'])
-        #print len(chatroom['MemberList'])
-        #msg.user.send(u'@%s\u2005 你喊我干啥? %s? 噢，对啦，咱们这个群里一共有%d个人了，等会儿切群，我来操作。' % (
-        #    msg.actualNickName, msg.text, len(chatroom['MemberList'])))
-
-def append_to_msg_buf(xMsg) :
-    global gGroupMsgBuffer
-    key = xMsg['GroupUserName']
-    if not gGroupMsgBuffer.has_key(key) :
-        gGroupMsgBuffer[key] = [xMsg]
-    else :
-        gGroupMsgBuffer[key].append(xMsg)
-    return
-
-
 ## TODO: call human_simulator in a loop
 def human_simulator() :
-    global gGroupMsgBuffer
-    gStop = False
-    # 每次阅读一个 Group 的信息并处理。具体处理操作见 batch_process_group_msg，包括：
-    # 1. 向 AI 逻辑发送群消息
-    # 2. 获取回复意见
-    # 3. 将回复发送到群里
-    # 4. 在 batch_process_group_msg 内部 sleep 一段时间
-    while True and not gStop and gGroupMsgBuffer:
-        (groupUserName, batchMsg) = gGroupMsgBuffer.popitem()
-        batch_process_group_msg(groupUserName, batchMsg)
+    while True:
+        eof = grouprobot.process(itchat)
+        if eof:
+          break
 
 
-def update_local_black_list(blacklist) :
-    global gBlackListCache
-    gBlackListCache = blacklist
-    return
-
-def batch_process_group_msg(groupUserName, batchMsg) :
-    ep_resp = http_post(batchMsg)
-    print "batch process group %s, which has %d msg" % (groupUserName, len(batchMsg))
-
-    if None != ep_resp :
-        if ep_resp.has_key('blacklist') and ep_resp['blacklist']:
-            update_local_black_list(ep_resp['blacklist'])
-            chatroom = itchat.search_chatrooms(userName = groupUserName)
-            if chatroom:
-                remove_blacklist_member(chatroom, ep_resp['blacklist'])
-
-        if ep_resp.has_key('msg') and ep_resp['msg'] :
-            itchat.send(u'%s' % (ep_resp['msg']), toUserName = groupUserName)
-
-        if ep_resp.has_key('image') and ep_resp['image'] :
-            print "send image to QQ", ep_resp['image']
-            # msg.user.send_image(ep_resp['image']);
-
+###
+### TEST CODE BELOW
+###
 
 class Member:
     def __init__(self, UserName, NickName):
