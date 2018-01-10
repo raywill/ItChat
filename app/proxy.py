@@ -4,7 +4,10 @@
 
 import sys
 import oss2
-sys.path.append("..")
+import subprocess
+import random
+from PIL import Image
+#sys.path.append("..")
 import itchat
 import grouprobot
 import time
@@ -25,13 +28,37 @@ gGroupMsgBuffer = {}
 
 def http_register():
     url='http://weixin8.xiaoheqingting.com/app/index.php?i=1&c=entry&event_id=1&do=robotregister&m=xc_huoma'
+    do_get_data(url)
+
+def http_refresh():
+    url='http://weixin8.xiaoheqingting.com/app/index.php?i=1&c=entry&event_id=1&do=robotrefresh&m=xc_huoma'
+    do_get_data(url)
+
+def http_upload_group_qr(groupName, filePath):
+    url='http://weixin8.xiaoheqingting.com/app/index.php?i=1&c=entry&event_id=1&do=robotcreategroup&m=xc_huoma&%s&%s'
+    g = {'groupname': groupName}
+    f = {'url':filePath}
+    response = urllib2.urlopen(url % (urllib.urlencode(g), urllib.urlencode(f)))
+    print url % (urllib.urlencode(g), urllib.urlencode(f))
+    raw_resp = response.read()
+    print raw_resp
+    json_resp = json.loads(raw_resp)
+    if (json_resp['status'] == 'OK') :
+        print "create group success", server_config
+    else:
+        print "Fail register. Server return status %s" % (json_resp['status'])
+
+
+def do_get_data(url):
+    global server_config
     response = urllib2.urlopen(url)
     raw_resp = response.read()
     json_resp = json.loads(raw_resp)
     if (json_resp['status'] == 'OK') :
         server_config['endpoint'] = json_resp['endpoint']
         server_config['group'] = json_resp['group']
-        print "Register success", server_config
+        server_config['mode'] = json_resp['mode']
+        print "get data success", server_config
     else:
         print "Fail register. Server return status %s" % (json_resp['status'])
         sys.exit()
@@ -82,17 +109,52 @@ def remove_blacklist_member(chatroom, blackList) :
     return 0
 
 
-
 @itchat.msg_register([PICTURE], isGroupChat=True)
-def download_picture(msg):
+def download_files(msg):
     if not server_config.has_key('group') or server_config['group'] == None:
-    	print "invalid server config"
-    	return
+        print "invalid server config"
+        return
     if hasattr(msg['User'], 'NickName') and msg['User'].NickName.find(server_config['group']) < 0 :
-    	return
+        return
+    if server_config['mode'] == 'setup':
+        setup_group(msg)
+    else:
+        check_screenshot(msg)
+    return
 
+def check_screenshot(msg):
     f = msg.download(msg.fileName)
     print f
+    print msg['FileName']
+    time.sleep(random.randint(8, 16))
+    try:
+      img = Image.open(msg['FileName'])
+      if img.size[0] == 750 and img.size[1] == 1160 :
+        itchat.send(u'@%s %s' % (msg['ActualNickName'], u"请发送本海报到朋友圈才算报名成功哦!"), toUserName = msg['User'].UserName)
+        return
+    except IOError as e:
+      print e
+      pass
+
+    try:
+      out_bytes = subprocess.check_output(['zbarimg','-q','--raw', msg['FileName']]).decode('utf-8')
+      if out_bytes.strip() == u'http://sh.52paipai.net.cn/5k/b/_.q/zyru/U/w/69//67EFqJTjCmqpc8VfAQAAOAQA71Ja' :
+        itchat.send(u'@%s %s' % (msg['ActualNickName'], u"靠谱，图片是真的，认证通过。其他人加油!"), toUserName = msg['User'].UserName)
+      else :
+        print out_bytes.strip()
+        print u'http://sh.52paipai.net.cn/5k/b/_.q/zyru/U/w/69//67EFqJTjCmqpc8VfAQAAOAQA71Ja'
+        itchat.send(u'@%s %s' % (msg['ActualNickName'], u"请输入正确的截图, 我读书少，别骗我"), toUserName = msg['User'].UserName)
+    except subprocess.CalledProcessError as e:
+      out_bytes = e.output       # Output generated before error
+      code      = e.returncode   # Return code
+      print "fail exec with code %d" % (code)
+      itchat.send(u'@%s %s' % (msg['ActualNickName'], u"什么图，看不清楚啊"), toUserName = msg['User'].UserName)
+
+    return
+
+
+def setup_group(msg) :
+    f = msg.download(msg.fileName)
 
     endpoint = 'http://oss-cn-beijing.aliyuncs.com'
     auth = oss2.Auth('MpiECWThc6otZsVR', '9OEAnT0AHAcgeFLhu1G93e2qXHQQkt')
@@ -100,8 +162,13 @@ def download_picture(msg):
     key = msg['FileName']
     with open(key, 'rb') as f:
         bucket.put_object(key, f)
-    print "%s/%s" % ("http://ftw.oss-cn-beijing.aliyuncs.com", key)
+    filePath = "%s/%s" % ("http://ftw.oss-cn-beijing.aliyuncs.com", key)
+    http_upload_group_qr(msg['User'].NickName, filePath)
+
+    time.sleep(random.randint(8, 16))
+    itchat.send(u'@%s %s %s' % (msg['ActualNickName'], u"当前处于 setup 模式，你的图片已经作为群二维码提交到后台。", time.time()), toUserName = msg['User'].UserName)
     return
+
 
 @itchat.msg_register([TEXT, NOTE], isGroupChat=True)
 def text_reply(msg):
@@ -170,6 +237,8 @@ msg2 = {'Type' : 'Text', 'MsgType' : 1, 'User' : User("@xyz", u"淘宝大学"), 
 msg3 = {'Type' : 'Text', 'MsgType' : 1, 'User' : User("@xyz", u"淘宝大学"), 'Text' : '空气 Hi All', 'ActualUserName' : '@yh', 'ActualNickName' : 'raywill'}
 msg4 = {'Type' : 'Text', 'MsgType' : 1, 'User' : User("@xyz", u"淘宝大学"), 'Text' : 'Clean Hi All', 'ActualUserName' : '@m3', 'ActualNickName' : 'm3'}
 msg5 = {'Type' : 'Text', 'MsgType' : 1, 'User' : User("@abc", u"淘宝联盟", [Member("@yx", "jasimin"), Member("@yh", "raywill"), Member("@m3", "m3")]), 'Text' : 'Late wispery', 'ActualUserName' : '@cx', 'ActualNickName' : 'laugher'}
+
+http_upload_group_qr(u"淘宝大家投", "http://weixin8.xiaoheqingting.com/attachment/images/1/2017/11/iw2XG4N777n7wJCwKOo8wj99HWnnnG.jpg")
 
 text_reply(msg)
 text_reply(msg2)
