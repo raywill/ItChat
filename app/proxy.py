@@ -3,6 +3,9 @@
 # coding:utf-8
 
 import sys
+import subprocess
+import random
+from PIL import Image
 #sys.path.append("..")
 import itchat
 import grouprobot
@@ -81,6 +84,41 @@ def remove_blacklist_member(chatroom, blackList) :
     return 0
 
 
+@itchat.msg_register([PICTURE], isGroupChat=True)
+def download_files(msg):
+    if not server_config.has_key('group') or server_config['group'] == None:
+        print "invalid server config"
+        return
+    if hasattr(msg['User'], 'NickName') and msg['User'].NickName.find(server_config['group']) < 0 :
+        return
+    f = msg.download(msg.fileName)
+    print f
+    print msg['FileName']
+    time.sleep(random.randint(8, 16))
+    try:
+      img =Image.open(msg['FileName'])
+      if img.size[0] == 750 and img.size[1] == 1160 :
+        itchat.send(u'@%s %s' % (msg['ActualNickName'], u"请发送本海报到朋友圈才算报名成功哦!"), toUserName = msg['User'].UserName)
+        return
+    except IOError as e:
+      print e
+      pass
+
+    try:
+      out_bytes = subprocess.check_output(['zbarimg','-q','--raw', msg['FileName']]).decode('utf-8')
+      if out_bytes.strip() == u'http://sh.52paipai.net.cn/5k/b/_.q/zyru/U/w/69//67EFqJTjCmqpc8VfAQAAOAQA71Ja' :
+        itchat.send(u'@%s %s' % (msg['ActualNickName'], u"靠谱，图片是真的，认证通过。其他人加油!"), toUserName = msg['User'].UserName)
+      else :
+        print out_bytes.strip()
+        print u'http://sh.52paipai.net.cn/5k/b/_.q/zyru/U/w/69//67EFqJTjCmqpc8VfAQAAOAQA71Ja'
+        itchat.send(u'@%s %s' % (msg['ActualNickName'], u"请输入正确的截图, 我读书少，别骗我"), toUserName = msg['User'].UserName)
+    except subprocess.CalledProcessError as e:
+      out_bytes = e.output       # Output generated before error
+      code      = e.returncode   # Return code
+      print "fail exec with code %d" % (code)
+      itchat.send(u'@%s %s' % (msg['ActualNickName'], u"什么图，看不清楚啊"), toUserName = msg['User'].UserName)
+
+    return
 
 @itchat.msg_register([TEXT, NOTE], isGroupChat=True)
 def text_reply(msg):
