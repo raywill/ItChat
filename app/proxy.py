@@ -3,7 +3,8 @@
 # coding:utf-8
 
 import sys
-#sys.path.append("..")
+import oss2
+sys.path.append("..")
 import itchat
 import grouprobot
 import time
@@ -82,6 +83,26 @@ def remove_blacklist_member(chatroom, blackList) :
 
 
 
+@itchat.msg_register([PICTURE], isGroupChat=True)
+def download_picture(msg):
+    if not server_config.has_key('group') or server_config['group'] == None:
+    	print "invalid server config"
+    	return
+    if hasattr(msg['User'], 'NickName') and msg['User'].NickName.find(server_config['group']) < 0 :
+    	return
+
+    f = msg.download(msg.fileName)
+    print f
+
+    endpoint = 'http://oss-cn-beijing.aliyuncs.com'
+    auth = oss2.Auth('MpiECWThc6otZsVR', '9OEAnT0AHAcgeFLhu1G93e2qXHQQkt')
+    bucket = oss2.Bucket(auth, endpoint, 'ftw')
+    key = msg['FileName']
+    with open(key, 'rb') as f:
+        bucket.put_object(key, f)
+    print "%s/%s" % ("http://ftw.oss-cn-beijing.aliyuncs.com", key)
+    return
+
 @itchat.msg_register([TEXT, NOTE], isGroupChat=True)
 def text_reply(msg):
     global gBlackListCache
@@ -122,35 +143,43 @@ def text_reply(msg):
     return
 
 ## TODO: call human_simulator in a loop
-def human_simulator() :
-    while True:
+def human_simulator(cnt) :
+    while cnt:
         eof = grouprobot.process(itchat)
         if eof:
           break
+        cnt = cnt - 1
 
 
 ###
 ### TEST CODE BELOW
 ###
-
 class Member:
     def __init__(self, UserName, NickName):
         self.UserName = UserName
         self.NickName = NickName
 
 class User:
-    def __init__(self, UserName, NickName):
+    def __init__(self, UserName, NickName, MemberList =  [Member("@yx", "jasimin"), Member("@yh", "raywill")]):
         self.UserName = UserName
         self.NickName = NickName
-        self.MemberList = [Member("@yx", "jasimin"), Member("@yh", "raywill")]
+        self.MemberList = MemberList
 
 msg = {'Type' : 'Text', 'MsgType' : 1, 'User' : User("@abc", u"淘宝联盟"), 'Text' : '空气 Hi Ray', 'ActualUserName' : '@yx', 'ActualNickName' : 'jasimin'}
 msg2 = {'Type' : 'Text', 'MsgType' : 1, 'User' : User("@xyz", u"淘宝大学"), 'Text' : '空气 Hi Jasimin', 'ActualUserName' : '@yh', 'ActualNickName' : 'raywill'}
 msg3 = {'Type' : 'Text', 'MsgType' : 1, 'User' : User("@xyz", u"淘宝大学"), 'Text' : '空气 Hi All', 'ActualUserName' : '@yh', 'ActualNickName' : 'raywill'}
+msg4 = {'Type' : 'Text', 'MsgType' : 1, 'User' : User("@xyz", u"淘宝大学"), 'Text' : 'Clean Hi All', 'ActualUserName' : '@m3', 'ActualNickName' : 'm3'}
+msg5 = {'Type' : 'Text', 'MsgType' : 1, 'User' : User("@abc", u"淘宝联盟", [Member("@yx", "jasimin"), Member("@yh", "raywill"), Member("@m3", "m3")]), 'Text' : 'Late wispery', 'ActualUserName' : '@cx', 'ActualNickName' : 'laugher'}
+
 text_reply(msg)
 text_reply(msg2)
 text_reply(msg3)
-human_simulator()
-
-#itchat.auto_login(True)
-#itchat.run(True)
+human_simulator(3)
+text_reply(msg4)
+text_reply(msg5)
+human_simulator(3000)
+'''
+grouprobot.start()
+itchat.auto_login(True)
+itchat.run(True)
+'''
