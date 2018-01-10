@@ -22,6 +22,9 @@ class Core(object):
  	def _msg_register(fn):
 	        return fn
     	return _msg_register
+    def upload_file(self, filename, isPicture):
+        print "upload %s" % (filename)
+        return None
 
 
 
@@ -35,3 +38,4 @@ search_chatrooms            = originInstance.search_chatrooms
 delete_member_from_chatroom = originInstance.delete_member_from_chatroom
 send                        = originInstance.send
 msg_register                = originInstance.msg_register
+upload_file                 = originInstance.upload_file
